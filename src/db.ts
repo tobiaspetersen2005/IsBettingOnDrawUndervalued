@@ -78,8 +78,16 @@ export function initDatabase() {
     db.exec(`ALTER TABLE matches ADD COLUMN sport_id TEXT NOT NULL DEFAULT 'SOCCER'`);
   } catch (e) {}
 
-  // Clean up any old tier-locked non-draw leagues
-  db.exec(`DELETE FROM leagues WHERE id NOT IN ('UEFA_CHAMPIONS_LEAGUE', 'MLS', 'NHL')`);
+  // Clean up any old tier-locked non-draw leagues safely by deleting dependent bets and matches first
+  try {
+    db.exec(`
+      DELETE FROM bets WHERE match_id IN (SELECT id FROM matches WHERE league_id NOT IN ('UEFA_CHAMPIONS_LEAGUE', 'MLS', 'NHL'));
+      DELETE FROM matches WHERE league_id NOT IN ('UEFA_CHAMPIONS_LEAGUE', 'MLS', 'NHL');
+      DELETE FROM leagues WHERE id NOT IN ('UEFA_CHAMPIONS_LEAGUE', 'MLS', 'NHL');
+    `);
+  } catch (e) {
+    console.error('Migration cleanup warning:', e);
+  }
 
   // Seed 3 active draw leagues if empty
   const leagueCount = (db.prepare(`SELECT COUNT(*) as count FROM leagues`).get() as { count: number }).count;

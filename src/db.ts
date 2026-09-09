@@ -74,12 +74,12 @@ export function initDatabase() {
     const defaultLeagues = [
       { id: 'UEFA_CHAMPIONS_LEAGUE', name: 'Champions League', country: 'Europe', enabled: 1 },
       { id: 'MLS', name: 'Major League Soccer', country: 'USA', enabled: 1 },
-      { id: 'EPL', name: 'Premier League', country: 'England', enabled: 1 },
-      { id: 'BUNDESLIGA', name: 'Bundesliga', country: 'Germany', enabled: 1 },
-      { id: 'FR_LIGUE_1', name: 'Ligue 1', country: 'France', enabled: 1 },
-      { id: 'IT_SERIE_A', name: 'Serie A', country: 'Italy', enabled: 1 },
-      { id: 'ES_LALIGA', name: 'La Liga', country: 'Spain', enabled: 1 },
-      { id: 'INTERNATIONAL_SOCCER', name: 'International Soccer', country: 'Global', enabled: 1 }
+      { id: 'NHL', name: 'National Hockey League', country: 'USA/Canada', enabled: 1 },
+      { id: 'NBA', name: 'National Basketball Assn', country: 'USA', enabled: 1 },
+      { id: 'NFL', name: 'National Football League', country: 'USA', enabled: 1 },
+      { id: 'MLB', name: 'Major League Baseball', country: 'USA', enabled: 1 },
+      { id: 'NCAAB', name: 'NCAA Basketball', country: 'USA', enabled: 1 },
+      { id: 'NCAAF', name: 'NCAA Football', country: 'USA', enabled: 1 }
     ];
 
     const insertLeague = db.prepare(`INSERT INTO leagues (id, name, country, enabled) VALUES (?, ?, ?, ?)`);

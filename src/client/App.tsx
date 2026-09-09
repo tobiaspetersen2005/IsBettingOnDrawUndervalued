@@ -136,17 +136,17 @@ export default function App() {
   // Filter bets and leagues based on selected sport category
   const filteredBets = data.bets.filter(b => {
     if (selectedCategory === 'ALL') return true;
-    return b.match?.sportId === selectedCategory;
+    return b.match?.leagueId === selectedCategory || b.match?.sportId === selectedCategory;
   });
 
   const filteredLeagues = data.leagues.filter(l => {
     if (selectedCategory === 'ALL') return true;
-    return l.sportId === selectedCategory;
+    return l.id === selectedCategory || l.sportId === selectedCategory;
   });
 
   const filteredLeagueStats = data.leagueStats.filter(s => {
     if (selectedCategory === 'ALL') return true;
-    return s.sportId === selectedCategory;
+    return s.leagueId === selectedCategory || s.sportId === selectedCategory;
   });
 
   // Calculate dynamic summary for selected category

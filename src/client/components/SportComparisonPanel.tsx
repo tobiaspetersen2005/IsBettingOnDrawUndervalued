@@ -1,6 +1,6 @@
 import React from 'react';
 import { SportStats, SportCategory } from '../../types.js';
-import { Target, Trophy, Scale } from 'lucide-react';
+import { Trophy, Scale } from 'lucide-react';
 
 interface Props {
   sportStats: SportStats[];
@@ -14,13 +14,13 @@ export const SportComparisonPanel: React.FC<Props> = ({ sportStats, selectedCate
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-5">
         <div>
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Scale className="text-emerald-400" size={20} /> Draw Market Comparison by Sport Category
+            <Scale className="text-emerald-400" size={20} /> Draw Market Comparison by Category
           </h2>
-          <p className="text-xs text-slate-400">Comparing 3-way soccer draws vs 60-min regulation hockey draws</p>
+          <p className="text-xs text-slate-400">Comparing Champions League, MLS, and NHL 60-min regulation draw markets</p>
         </div>
 
         {/* Category Selector Tabs */}
-        <div className="flex bg-slate-900/80 p-1 rounded-xl border border-slate-700 text-xs font-semibold">
+        <div className="flex flex-wrap bg-slate-900/80 p-1 rounded-xl border border-slate-700 text-xs font-semibold">
           <button
             onClick={() => onSelectCategory('ALL')}
             className={`px-3.5 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
@@ -33,33 +33,52 @@ export const SportComparisonPanel: React.FC<Props> = ({ sportStats, selectedCate
           </button>
 
           <button
-            onClick={() => onSelectCategory('SOCCER')}
+            onClick={() => onSelectCategory('UEFA_CHAMPIONS_LEAGUE')}
             className={`px-3.5 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
-              selectedCategory === 'SOCCER'
+              selectedCategory === 'UEFA_CHAMPIONS_LEAGUE'
                 ? 'bg-emerald-500 text-white shadow-lg'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            ⚽ Soccer Draws
+            🏆 Champions League
           </button>
 
           <button
-            onClick={() => onSelectCategory('HOCKEY')}
+            onClick={() => onSelectCategory('MLS')}
             className={`px-3.5 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
-              selectedCategory === 'HOCKEY'
+              selectedCategory === 'MLS'
                 ? 'bg-emerald-500 text-white shadow-lg'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            🏒 Hockey Reg. Draws
+            ⚽ MLS
+          </button>
+
+          <button
+            onClick={() => onSelectCategory('NHL')}
+            className={`px-3.5 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
+              selectedCategory === 'NHL'
+                ? 'bg-emerald-500 text-white shadow-lg'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            🏒 NHL Reg. Draws
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {sportStats.map(stat => {
           const isProfitable = stat.totalProfitLoss >= 0;
-          const isSoccer = stat.sportId === 'SOCCER';
+          let icon = '🏆';
+          let subtitle = 'Europe 90-Min 1X2';
+          if (stat.sportId === 'MLS') {
+            icon = '⚽';
+            subtitle = 'USA 90-Min 1X2';
+          } else if (stat.sportId === 'NHL') {
+            icon = '🏒';
+            subtitle = 'NHL 60-Min Regulation 3-Way';
+          }
 
           return (
             <div
@@ -73,12 +92,10 @@ export const SportComparisonPanel: React.FC<Props> = ({ sportStats, selectedCate
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">{isSoccer ? '⚽' : '🏒'}</span>
+                  <span className="text-xl">{icon}</span>
                   <div>
                     <h3 className="font-bold text-sm text-white">{stat.sportName}</h3>
-                    <p className="text-[11px] text-slate-400">
-                      {isSoccer ? 'Champions League & MLS 90-Min 1X2' : 'NHL 60-Min Regulation 3-Way'}
-                    </p>
+                    <p className="text-[11px] text-slate-400">{subtitle}</p>
                   </div>
                 </div>
 

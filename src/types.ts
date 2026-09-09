@@ -1,4 +1,4 @@
-export type SportCategory = 'ALL' | 'SOCCER' | 'HOCKEY';
+export type SportCategory = 'ALL' | 'UEFA_CHAMPIONS_LEAGUE' | 'MLS' | 'NHL';
 
 export interface League {
   id: string;
@@ -72,7 +72,7 @@ export interface LeagueStats {
 }
 
 export interface SportStats {
-  sportId: string;
+  sportId: string; // 'UEFA_CHAMPIONS_LEAGUE' | 'MLS' | 'NHL'
   sportName: string;
   totalBets: number;
   wonBets: number;

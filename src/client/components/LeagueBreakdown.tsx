@@ -14,12 +14,12 @@ export const LeagueBreakdown: React.FC<Props> = ({ leagues, leagueStats, onToggl
     <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 mb-6 shadow-lg">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-lg font-bold text-white">8 Targeted Leagues - Draw Yield Analysis</h2>
-          <p className="text-xs text-slate-400">Comparing profitability and draw frequency across leagues</p>
+          <h2 className="text-lg font-bold text-white">3 Targeted Leagues - Draw Yield Analysis</h2>
+          <p className="text-xs text-slate-400">Comparing profitability and draw frequency across active draw markets</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {leagues.map(league => {
           const stats = statsMap.get(league.id) || {
             leagueId: league.id,

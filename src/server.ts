@@ -12,6 +12,7 @@ import {
   getBets,
   getBankrollHistory,
   getLeagueStats,
+  getSportStats,
   clearDatabaseData
 } from './db.js';
 import { scanAndRegisterDailyBets, settlePendingBets } from './services/simulationEngine.js';
@@ -43,6 +44,7 @@ app.get('/api/dashboard', (req, res) => {
 
     const leagues = getLeagues();
     const leagueStats = getLeagueStats();
+    const sportStats = getSportStats();
     const bets = getBets();
     const matches = getMatches();
 
@@ -63,7 +65,8 @@ app.get('/api/dashboard', (req, res) => {
       bankrollHistory: history,
       leagues,
       leagueStats,
-      bets: bets.slice(0, 100), // Limit top 100 recent bets
+      sportStats,
+      bets: bets.slice(0, 150),
       totalMatchesCount: matches.length,
       settings
     });

@@ -4,8 +4,9 @@ import { BankrollChart } from './components/BankrollChart.js';
 import { LeagueBreakdown } from './components/LeagueBreakdown.js';
 import { BetsTable } from './components/BetsTable.js';
 import { SettingsModal } from './components/SettingsModal.js';
-import { AppSettings, League, LeagueStats, Bet, BankrollSnapshot } from '../types.js';
-import { RefreshCw, Play, CheckCircle2, Settings, Zap, ShieldCheck } from 'lucide-react';
+import { SportComparisonPanel } from './components/SportComparisonPanel.js';
+import { AppSettings, League, LeagueStats, SportStats, Bet, BankrollSnapshot, SportCategory } from '../types.js';
+import { RefreshCw, Play, CheckCircle2, Settings, ShieldCheck } from 'lucide-react';
 
 interface DashboardResponse {
   success: boolean;
@@ -24,6 +25,7 @@ interface DashboardResponse {
   bankrollHistory: BankrollSnapshot[];
   leagues: League[];
   leagueStats: LeagueStats[];
+  sportStats: SportStats[];
   bets: Bet[];
   settings: AppSettings;
 }
@@ -33,6 +35,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<SportCategory>('ALL');
 
   const fetchDashboard = async () => {
     try {
@@ -53,7 +56,7 @@ export default function App() {
   }, []);
 
   const handleRunScan = async () => {
-    setActionMessage('Scanning 8 leagues & fetching daily draw odds...');
+    setActionMessage('Scanning leagues & fetching daily draw market odds...');
     try {
       const res = await fetch('/api/scan', { method: 'POST' });
       const json = await res.json();
@@ -78,25 +81,6 @@ export default function App() {
       }
     } catch (err) {
       setActionMessage('Failed to settle bets.');
-    }
-    setTimeout(() => setActionMessage(null), 5000);
-  };
-
-  const handleSimulate = async () => {
-    setActionMessage('Generating 30-day historical simulation across 8 leagues...');
-    try {
-      const res = await fetch('/api/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days: 30 })
-      });
-      const json = await res.json();
-      if (json.success) {
-        setActionMessage(`Simulation complete! Generated ${json.matchesGenerated} matches & placed ${json.betsPlaced} paper draw bets.`);
-        fetchDashboard();
-      }
-    } catch (err) {
-      setActionMessage('Simulation failed.');
     }
     setTimeout(() => setActionMessage(null), 5000);
   };
@@ -149,6 +133,45 @@ export default function App() {
     );
   }
 
+  // Filter bets and leagues based on selected sport category
+  const filteredBets = data.bets.filter(b => {
+    if (selectedCategory === 'ALL') return true;
+    return b.match?.sportId === selectedCategory;
+  });
+
+  const filteredLeagues = data.leagues.filter(l => {
+    if (selectedCategory === 'ALL') return true;
+    return l.sportId === selectedCategory;
+  });
+
+  const filteredLeagueStats = data.leagueStats.filter(s => {
+    if (selectedCategory === 'ALL') return true;
+    return s.sportId === selectedCategory;
+  });
+
+  // Calculate dynamic summary for selected category
+  const wonBets = filteredBets.filter(b => b.status === 'WON');
+  const lostBets = filteredBets.filter(b => b.status === 'LOST');
+  const pendingBets = filteredBets.filter(b => b.status === 'PENDING');
+  const settledBetsCount = wonBets.length + lostBets.length;
+  const categoryNetProfit = filteredBets.reduce((sum, b) => sum + (b.status !== 'PENDING' ? b.profitLoss : 0), 0);
+  const categoryWinRate = settledBetsCount > 0 ? (wonBets.length / settledBetsCount) * 100 : 0;
+  const totalStaked = settledBetsCount * data.summary.stakePerBet;
+  const categoryRoi = totalStaked > 0 ? (categoryNetProfit / totalStaked) * 100 : 0;
+
+  const currentSummary = selectedCategory === 'ALL' ? data.summary : {
+    currentBalance: data.summary.startingBalance + categoryNetProfit,
+    startingBalance: data.summary.startingBalance,
+    netProfit: categoryNetProfit,
+    totalBets: settledBetsCount,
+    wonBets: wonBets.length,
+    lostBets: lostBets.length,
+    pendingBets: pendingBets.length,
+    winRate: categoryWinRate,
+    roiPercentage: categoryRoi,
+    stakePerBet: data.summary.stakePerBet
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8 max-w-7xl mx-auto">
       {/* Top Header */}
@@ -160,10 +183,10 @@ export default function App() {
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-            Is Betting On Draw Undervalued?
+            Draw Betting Value Simulation
           </h1>
           <p className="text-xs md:text-sm text-slate-400 mt-1">
-            Automated scanning of 8 soccer leagues • 100 units per draw bet • Authentic SportsGameOdds market data
+            Comparing 3-Way Draw Markets • Soccer 90-Min vs Hockey 60-Min Regulation • FanDuel Market Odds
           </p>
         </div>
 
@@ -201,21 +224,28 @@ export default function App() {
         </div>
       )}
 
+      {/* Sport Category Switcher & Comparison */}
+      <SportComparisonPanel
+        sportStats={data.sportStats || []}
+        selectedCategory={selectedCategory}
+        onSelectCategory={setSelectedCategory}
+      />
+
       {/* Metric Cards */}
-      <OverviewCards summary={data.summary} />
+      <OverviewCards summary={currentSummary} />
 
       {/* Bankroll Chart */}
       <BankrollChart history={data.bankrollHistory} />
 
       {/* League Breakdown */}
       <LeagueBreakdown
-        leagues={data.leagues}
-        leagueStats={data.leagueStats}
+        leagues={filteredLeagues}
+        leagueStats={filteredLeagueStats}
         onToggleLeague={handleToggleLeague}
       />
 
       {/* Matches & Bets Table */}
-      <BetsTable bets={data.bets} />
+      <BetsTable bets={filteredBets} />
 
       {/* Settings Modal */}
       <SettingsModal

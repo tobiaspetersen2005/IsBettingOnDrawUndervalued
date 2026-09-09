@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { League, Match, Bet, BankrollSnapshot, AppSettings, LeagueStats } from './types.js';
+import { League, Match, Bet, BankrollSnapshot, AppSettings, LeagueStats, SportStats } from './types.js';
 
 const DB_PATH = path.join(process.cwd(), 'draw_betting.db');
 const db = new Database(DB_PATH);
@@ -15,6 +15,7 @@ export function initDatabase() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       country TEXT NOT NULL,
+      sport_id TEXT NOT NULL DEFAULT 'SOCCER',
       enabled INTEGER NOT NULL DEFAULT 1
     );
 
@@ -22,6 +23,7 @@ export function initDatabase() {
       id TEXT PRIMARY KEY,
       event_id TEXT UNIQUE NOT NULL,
       league_id TEXT NOT NULL,
+      sport_id TEXT NOT NULL DEFAULT 'SOCCER',
       home_team TEXT NOT NULL,
       away_team TEXT NOT NULL,
       starts_at TEXT NOT NULL,
@@ -68,23 +70,31 @@ export function initDatabase() {
     );
   `);
 
+  // Migration: Ensure sport_id column exists
+  try {
+    db.exec(`ALTER TABLE leagues ADD COLUMN sport_id TEXT NOT NULL DEFAULT 'SOCCER'`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE matches ADD COLUMN sport_id TEXT NOT NULL DEFAULT 'SOCCER'`);
+  } catch (e) {}
+
   // Seed default 8 leagues if empty
   const leagueCount = (db.prepare(`SELECT COUNT(*) as count FROM leagues`).get() as { count: number }).count;
   if (leagueCount === 0) {
     const defaultLeagues = [
-      { id: 'UEFA_CHAMPIONS_LEAGUE', name: 'Champions League', country: 'Europe', enabled: 1 },
-      { id: 'MLS', name: 'Major League Soccer', country: 'USA', enabled: 1 },
-      { id: 'NHL', name: 'National Hockey League', country: 'USA/Canada', enabled: 1 },
-      { id: 'NBA', name: 'National Basketball Assn', country: 'USA', enabled: 1 },
-      { id: 'NFL', name: 'National Football League', country: 'USA', enabled: 1 },
-      { id: 'MLB', name: 'Major League Baseball', country: 'USA', enabled: 1 },
-      { id: 'NCAAB', name: 'NCAA Basketball', country: 'USA', enabled: 1 },
-      { id: 'NCAAF', name: 'NCAA Football', country: 'USA', enabled: 1 }
+      { id: 'UEFA_CHAMPIONS_LEAGUE', name: 'Champions League', country: 'Europe', sport_id: 'SOCCER', enabled: 1 },
+      { id: 'MLS', name: 'Major League Soccer', country: 'USA', sport_id: 'SOCCER', enabled: 1 },
+      { id: 'NHL', name: 'National Hockey League', country: 'USA/Canada', sport_id: 'HOCKEY', enabled: 1 },
+      { id: 'NBA', name: 'National Basketball Assn', country: 'USA', sport_id: 'BASKETBALL', enabled: 1 },
+      { id: 'NFL', name: 'National Football League', country: 'USA', sport_id: 'FOOTBALL', enabled: 1 },
+      { id: 'MLB', name: 'Major League Baseball', country: 'USA', sport_id: 'BASEBALL', enabled: 1 },
+      { id: 'NCAAB', name: 'NCAA Basketball', country: 'USA', sport_id: 'BASKETBALL', enabled: 1 },
+      { id: 'NCAAF', name: 'NCAA Football', country: 'USA', sport_id: 'FOOTBALL', enabled: 1 }
     ];
 
-    const insertLeague = db.prepare(`INSERT INTO leagues (id, name, country, enabled) VALUES (?, ?, ?, ?)`);
+    const insertLeague = db.prepare(`INSERT INTO leagues (id, name, country, sport_id, enabled) VALUES (?, ?, ?, ?, ?)`);
     for (const l of defaultLeagues) {
-      insertLeague.run(l.id, l.name, l.country, l.enabled);
+      insertLeague.run(l.id, l.name, l.country, l.sport_id, l.enabled);
     }
   }
 
@@ -141,11 +151,12 @@ export function saveSetting(key: string, value: string) {
 }
 
 export function getLeagues(): League[] {
-  const rows = db.prepare(`SELECT id, name, country, enabled FROM leagues`).all() as any[];
+  const rows = db.prepare(`SELECT id, name, country, sport_id, enabled FROM leagues`).all() as any[];
   return rows.map(r => ({
     id: r.id,
     name: r.name,
     country: r.country,
+    sportId: r.sport_id || 'SOCCER',
     enabled: Boolean(r.enabled)
   }));
 }
@@ -160,8 +171,8 @@ export function insertOrUpdateMatch(m: Omit<Match, 'id'>): Match {
   const now = new Date().toISOString();
 
   db.prepare(`
-    INSERT INTO matches (id, event_id, league_id, home_team, away_team, starts_at, status, home_score, away_score, is_draw, draw_odds_american, draw_odds_decimal, bookmaker_id, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO matches (id, event_id, league_id, sport_id, home_team, away_team, starts_at, status, home_score, away_score, is_draw, draw_odds_american, draw_odds_decimal, bookmaker_id, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(event_id) DO UPDATE SET
       status = excluded.status,
       home_score = excluded.home_score,
@@ -175,6 +186,7 @@ export function insertOrUpdateMatch(m: Omit<Match, 'id'>): Match {
     matchId,
     m.eventId,
     m.leagueId,
+    m.sportId || 'SOCCER',
     m.homeTeam,
     m.awayTeam,
     m.startsAt,
@@ -197,6 +209,7 @@ export function getMatches(): Match[] {
     id: r.id,
     eventId: r.event_id,
     leagueId: r.league_id,
+    sportId: r.sport_id || 'SOCCER',
     homeTeam: r.home_team,
     awayTeam: r.away_team,
     startsAt: r.starts_at,
@@ -230,7 +243,7 @@ export function updateBetSettlement(id: string, status: 'WON' | 'LOST', payout: 
 
 export function getBets(): Bet[] {
   const rows = db.prepare(`
-    SELECT b.*, m.home_team, m.away_team, m.league_id, m.starts_at, m.status as match_status, m.home_score, m.away_score, m.is_draw, m.draw_odds_american, m.bookmaker_id
+    SELECT b.*, m.home_team, m.away_team, m.league_id, m.sport_id, m.starts_at, m.status as match_status, m.home_score, m.away_score, m.is_draw, m.draw_odds_american, m.bookmaker_id
     FROM bets b
     JOIN matches m ON b.match_id = m.id
     ORDER BY m.starts_at ASC
@@ -250,6 +263,7 @@ export function getBets(): Bet[] {
       id: r.match_id,
       eventId: r.match_id,
       leagueId: r.league_id,
+      sportId: r.sport_id || 'SOCCER',
       homeTeam: r.home_team,
       awayTeam: r.away_team,
       startsAt: r.starts_at,
@@ -335,7 +349,44 @@ export function getLeagueStats(): LeagueStats[] {
     return {
       leagueId: l.id,
       leagueName: l.name,
+      sportId: l.sportId,
       totalBets: leagueBets.length,
+      wonBets: wonBets.length,
+      lostBets: lostBets.length,
+      pendingBets: pendingBets.length,
+      winRate,
+      totalStaked,
+      totalProfitLoss,
+      roiPercentage,
+      avgDrawOdds
+    };
+  });
+}
+
+export function getSportStats(): SportStats[] {
+  const bets = getBets();
+  const sports = [
+    { id: 'SOCCER', name: 'Soccer Draw Market' },
+    { id: 'HOCKEY', name: 'Hockey 60-Min Regulation Draw Market' }
+  ];
+
+  return sports.map(s => {
+    const sportBets = bets.filter(b => b.match?.sportId === s.id);
+    const wonBets = sportBets.filter(b => b.status === 'WON');
+    const lostBets = sportBets.filter(b => b.status === 'LOST');
+    const pendingBets = sportBets.filter(b => b.status === 'PENDING');
+    const settledBets = wonBets.length + lostBets.length;
+
+    const totalStaked = settledBets * 100;
+    const totalProfitLoss = sportBets.reduce((sum, b) => sum + (b.status !== 'PENDING' ? b.profitLoss : 0), 0);
+    const winRate = settledBets > 0 ? (wonBets.length / settledBets) * 100 : 0;
+    const roiPercentage = totalStaked > 0 ? (totalProfitLoss / totalStaked) * 100 : 0;
+    const avgDrawOdds = sportBets.length > 0 ? sportBets.reduce((sum, b) => sum + b.oddsDecimal, 0) / sportBets.length : 0;
+
+    return {
+      sportId: s.id,
+      sportName: s.name,
+      totalBets: sportBets.length,
       wonBets: wonBets.length,
       lostBets: lostBets.length,
       pendingBets: pendingBets.length,

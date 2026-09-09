@@ -35,6 +35,7 @@ export async function fetchLiveLeagueMatches(leagueId: string, apiKey: string, p
         const eventId = event.eventID;
         if (!eventId) continue;
 
+        const sportId = event.sportID || (leagueId === 'NHL' ? 'HOCKEY' : 'SOCCER');
         const homeTeam = event.teams?.home?.names?.medium || event.teams?.home?.names?.long || event.teams?.home?.teamID || 'Home Team';
         const awayTeam = event.teams?.away?.names?.medium || event.teams?.away?.names?.long || event.teams?.away?.teamID || 'Away Team';
         const startsAt = event.status?.startsAt || new Date().toISOString();
@@ -85,6 +86,7 @@ export async function fetchLiveLeagueMatches(leagueId: string, apiKey: string, p
         matches.push({
           eventId,
           leagueId,
+          sportId,
           homeTeam,
           awayTeam,
           startsAt,

@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: draw-betting-tracker
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: free

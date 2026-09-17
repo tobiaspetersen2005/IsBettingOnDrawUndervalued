@@ -11,7 +11,7 @@ import {
   rebuildBankrollHistory,
   clearDatabaseData
 } from '../db.js';
-import { fetchLiveLeagueMatches } from './sportsApi.js';
+import { fetchLiveLeagueMatches, fetchESPNLeagueMatches } from './sportsApi.js';
 import { Match, Bet } from '../types.js';
 
 function hashString(str: string): number {
@@ -165,7 +165,29 @@ export async function scanAndRegisterDailyBets(): Promise<{ matchesScanned: numb
 
   for (const league of leagues) {
     try {
-      // Fetch live/upcoming events from API
+      // 1. Fetch authentic real-world matches & historical scores from ESPN API
+      const espnMatches = await fetchESPNLeagueMatches(league.id);
+      matchesScanned += espnMatches.length;
+
+      for (const m of espnMatches) {
+        const savedMatch = insertOrUpdateMatch(m);
+
+        if (!existingMatchIdsWithBets.has(savedMatch.id)) {
+          insertBet({
+            matchId: savedMatch.id,
+            stake: settings.stakePerBet,
+            oddsDecimal: savedMatch.drawOddsDecimal,
+            status: 'PENDING',
+            payout: 0,
+            profitLoss: 0,
+            placedAt: new Date().toISOString()
+          });
+          existingMatchIdsWithBets.add(savedMatch.id);
+          newBetsPlaced++;
+        }
+      }
+
+      // 2. Fetch live/upcoming events from SportsGameOdds API
       const matches = await fetchLiveLeagueMatches(league.id, settings.apiKey, settings.selectedBookmaker);
       
       const next10DaysMatches = matches.filter(m => {

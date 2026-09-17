@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Bet } from '../../types.js';
-import { Search, CheckCircle, XCircle, Clock, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, CheckCircle, XCircle, Clock, ArrowUpDown, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
 
 export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
-  const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'SETTLED' | 'WON' | 'LOST'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'PREVIOUS' | 'UPCOMING'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<'startsAt' | 'league' | 'odds' | 'profit'>('startsAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -18,10 +18,8 @@ export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
   };
 
   const filteredBets = bets.filter(b => {
-    if (filter === 'PENDING' && b.status !== 'PENDING') return false;
-    if (filter === 'SETTLED' && b.status === 'PENDING') return false;
-    if (filter === 'WON' && b.status !== 'WON') return false;
-    if (filter === 'LOST' && b.status !== 'LOST') return false;
+    if (filter === 'UPCOMING' && b.status !== 'PENDING') return false;
+    if (filter === 'PREVIOUS' && b.status === 'PENDING') return false;
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -56,6 +54,8 @@ export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
     return 0;
   });
 
+  const displayedBets = filter === 'UPCOMING' ? sortedBets.slice(0, 20) : sortedBets;
+
   const renderSortIcon = (field: 'startsAt' | 'league' | 'odds' | 'profit') => {
     if (sortField !== field) return <ArrowUpDown size={12} className="text-slate-600 inline ml-1" />;
     return sortDir === 'asc'
@@ -63,34 +63,62 @@ export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
       : <ArrowDown size={12} className="text-emerald-400 inline ml-1" />;
   };
 
+  const previousCount = bets.filter(b => b.status !== 'PENDING').length;
+  const upcomingCount = bets.filter(b => b.status === 'PENDING').length;
+
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
         <div>
-          <h2 className="text-lg font-bold text-white">Matches & Paper Bets Log</h2>
-          <p className="text-xs text-slate-400">Sorted chronologically by match date (earliest upcoming first)</p>
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <Calendar size={18} className="text-emerald-400" /> Matches & Paper Bets Log
+          </h2>
+          <p className="text-xs text-slate-400">
+            {filter === 'UPCOMING' && `Displaying next ${displayedBets.length} upcoming matches (pending)`}
+            {filter === 'PREVIOUS' && `Displaying ${previousCount} completed previous matches with final scores`}
+            {filter === 'ALL' && `Displaying all ${bets.length} matches (${previousCount} completed, ${upcomingCount} upcoming)`}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {/* Status Tabs */}
-          <div className="flex bg-slate-900/60 p-1 rounded-lg border border-slate-700 text-xs">
-            {(['ALL', 'PENDING', 'SETTLED', 'WON', 'LOST'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setFilter(tab)}
-                className={`px-3 py-1.5 rounded-md font-medium transition-all ${
-                  filter === tab
-                    ? 'bg-emerald-500 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
+          {/* Main Filter Buttons: All, Previous, Upcoming */}
+          <div className="flex bg-slate-900/80 p-1 rounded-xl border border-slate-700 text-xs font-semibold">
+            <button
+              onClick={() => setFilter('ALL')}
+              className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                filter === 'ALL'
+                  ? 'bg-emerald-500 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              All Matches ({bets.length})
+            </button>
+
+            <button
+              onClick={() => setFilter('PREVIOUS')}
+              className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                filter === 'PREVIOUS'
+                  ? 'bg-emerald-500 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Previous Matches ({previousCount})
+            </button>
+
+            <button
+              onClick={() => setFilter('UPCOMING')}
+              className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                filter === 'UPCOMING'
+                  ? 'bg-emerald-500 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Upcoming Matches (20)
+            </button>
           </div>
 
           {/* Search Box */}
-          <div className="relative flex-1 md:w-56">
+          <div className="relative flex-1 md:w-48">
             <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
             <input
               type="text"
@@ -114,7 +142,7 @@ export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
                 League {renderSortIcon('league')}
               </th>
               <th className="py-3 px-4">Match</th>
-              <th className="py-3 px-4">Score</th>
+              <th className="py-3 px-4">Result Score</th>
               <th className="py-3 px-4">Bookmaker</th>
               <th className="py-3 px-4 cursor-pointer hover:text-white transition" onClick={() => handleSort('odds')}>
                 Draw Odds {renderSortIcon('odds')}
@@ -127,14 +155,14 @@ export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700/50 text-slate-300">
-            {sortedBets.length === 0 ? (
+            {displayedBets.length === 0 ? (
               <tr>
                 <td colSpan={9} className="py-8 text-center text-slate-500">
-                  No paper bets found matching criteria.
+                  No matches found matching criteria.
                 </td>
               </tr>
             ) : (
-              sortedBets.map(bet => {
+              displayedBets.map(bet => {
                 const match = bet.match;
                 const isWon = bet.status === 'WON';
                 const isLost = bet.status === 'LOST';
@@ -152,12 +180,16 @@ export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
                       {match ? `${match.homeTeam} vs ${match.awayTeam}` : 'Unknown Match'}
                     </td>
                     <td className="py-3 px-4 font-bold text-slate-200">
-                      {match && match.homeScore !== null && match.awayScore !== null
-                        ? `${match.homeScore} - ${match.awayScore}`
-                        : '-'}
+                      {match && match.homeScore !== null && match.awayScore !== null ? (
+                        <span className={match.homeScore === match.awayScore ? 'text-emerald-400 font-extrabold' : 'text-slate-200'}>
+                          {match.homeScore} - {match.awayScore} {match.homeScore === match.awayScore ? ' (Draw)' : ''}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 font-normal italic">Upcoming</span>
+                      )}
                     </td>
                     <td className="py-3 px-4 uppercase text-slate-400 font-medium">
-                      {match?.bookmakerId || 'bet365'}
+                      {match?.bookmakerId || 'fanduel'}
                     </td>
                     <td className="py-3 px-4 font-bold text-amber-400">
                       {bet.oddsDecimal.toFixed(2)} ({match?.drawOddsAmerican || `+${Math.round((bet.oddsDecimal - 1) * 100)}`})

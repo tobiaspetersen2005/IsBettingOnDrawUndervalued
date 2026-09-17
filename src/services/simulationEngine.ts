@@ -7,6 +7,7 @@ import {
   insertOrUpdateMatch,
   insertBet,
   updateBetSettlement,
+  updateMatchScores,
   rebuildBankrollHistory,
   clearDatabaseData
 } from '../db.js';
@@ -49,6 +50,104 @@ function generateDeterministicScore(eventId: string, sportId: string): { homeSco
       return { homeScore: hScore, awayScore: aScore, isDraw: false };
     }
   }
+}
+
+const UPCOMING_TEAMS: Record<string, string[]> = {
+  UEFA_CHAMPIONS_LEAGUE: [
+    'Real Madrid', 'Man City', 'Bayern Munich', 'PSG', 'Barcelona',
+    'Inter Milan', 'Arsenal', 'Dortmund', 'Atletico Madrid', 'Benfica',
+    'Juventus', 'Leverkusen', 'PSV', 'Sporting CP', 'AC Milan', 'Lille'
+  ],
+  MLS: [
+    'Inter Miami', 'LAFC', 'Columbus Crew', 'FC Cincinnati', 'LA Galaxy',
+    'Seattle Sounders', 'NY Red Bulls', 'Orlando City', 'Atlanta United', 'Philadelphia Union',
+    'Minnesota United', 'Portland Timbers', 'Real Salt Lake', 'Houston Dynamo'
+  ],
+  NHL: [
+    'Edmonton Oilers', 'Florida Panthers', 'Dallas Stars', 'NY Rangers', 'Boston Bruins',
+    'Colorado Avalanche', 'Carolina Hurricanes', 'Vegas Golden Knights', 'Toronto Maple Leafs', 'Tampa Bay Lightning',
+    'Vancouver Canucks', 'Winnipeg Jets', 'New Jersey Devils', 'Nashville Predators'
+  ]
+};
+
+const ODDS_TIERS = [
+  { decimal: 3.40, american: '+240' },
+  { decimal: 3.60, american: '+260' },
+  { decimal: 3.80, american: '+280' },
+  { decimal: 4.00, american: '+300' },
+  { decimal: 4.20, american: '+320' },
+  { decimal: 4.50, american: '+350' }
+];
+
+export async function ensureUpcomingMatchesCount(targetCount: number = 25): Promise<number> {
+  const settings = getSettings();
+  const leagues = getLeagues().filter(l => l.enabled);
+  if (leagues.length === 0) return 0;
+
+  const now = new Date();
+  const existingPending = getPendingBets();
+  let addedCount = 0;
+
+  if (existingPending.length >= targetCount) return 0;
+
+  const needed = targetCount - existingPending.length;
+  let dayOffset = 1;
+  let leagueIdx = 0;
+
+  const existingBets = getBets();
+  const existingMatchIds = new Set(existingBets.map(b => b.matchId));
+
+  for (let i = 0; i < needed; i++) {
+    const league = leagues[leagueIdx % leagues.length];
+    const teams = UPCOMING_TEAMS[league.id] || UPCOMING_TEAMS['UEFA_CHAMPIONS_LEAGUE'];
+    
+    const teamAIdx = (i * 2) % teams.length;
+    const teamBIdx = (i * 2 + 1) % teams.length;
+    const homeTeam = teams[teamAIdx];
+    const awayTeam = teams[teamBIdx];
+
+    const matchTime = new Date(now.getTime() + (dayOffset * 24 * 60 * 60 * 1000) + ((i % 4) * 3 * 60 * 60 * 1000));
+    const eventId = `sched_${league.id}_${matchTime.toISOString().substring(0, 10)}_${i}`;
+
+    const oddsTier = ODDS_TIERS[i % ODDS_TIERS.length];
+    const sportId = league.sportId;
+
+    const savedMatch = insertOrUpdateMatch({
+      eventId,
+      leagueId: league.id,
+      sportId,
+      homeTeam,
+      awayTeam,
+      startsAt: matchTime.toISOString(),
+      status: 'SCHEDULED',
+      homeScore: null,
+      awayScore: null,
+      isDraw: null,
+      drawOddsAmerican: oddsTier.american,
+      drawOddsDecimal: oddsTier.decimal,
+      bookmakerId: settings.selectedBookmaker,
+      updatedAt: new Date().toISOString()
+    });
+
+    if (!existingMatchIds.has(savedMatch.id)) {
+      insertBet({
+        matchId: savedMatch.id,
+        stake: settings.stakePerBet,
+        oddsDecimal: savedMatch.drawOddsDecimal,
+        status: 'PENDING',
+        payout: 0,
+        profitLoss: 0,
+        placedAt: new Date().toISOString()
+      });
+      existingMatchIds.add(savedMatch.id);
+      addedCount++;
+    }
+
+    leagueIdx++;
+    if (i % 3 === 0) dayOffset++;
+  }
+
+  return addedCount;
 }
 
 export async function scanAndRegisterDailyBets(): Promise<{ matchesScanned: number; newBetsPlaced: number }> {
@@ -101,6 +200,9 @@ export async function scanAndRegisterDailyBets(): Promise<{ matchesScanned: numb
     await new Promise(resolve => setTimeout(resolve, 1500));
   }
 
+  // Ensure at least 25 upcoming matches are scheduled in the pipeline
+  await ensureUpcomingMatchesCount(25);
+
   // Settle any bets whose matches are finished or in the past
   await settlePendingBets();
 
@@ -131,13 +233,7 @@ export async function settlePendingBets(): Promise<{ betsSettled: number; wonCou
       awayScore = sim.awayScore;
       
       // Save final score to matches table
-      insertOrUpdateMatch({
-        ...m,
-        status: 'FINISHED',
-        homeScore,
-        awayScore,
-        isDraw: sim.isDraw
-      });
+      updateMatchScores(m.id, homeScore, awayScore, sim.isDraw);
     }
 
     if (isFinished && homeScore !== null && awayScore !== null) {
@@ -157,6 +253,18 @@ export async function settlePendingBets(): Promise<{ betsSettled: number; wonCou
 
       updateBetSettlement(bet.id, status, payout, profitLoss);
       betsSettled++;
+    }
+  }
+
+  // Backfill scores for any previously settled bets missing homeScore / awayScore
+  const allBets = getBets();
+  for (const bet of allBets) {
+    if (bet.status !== 'PENDING' && bet.match && (bet.match.homeScore === null || bet.match.awayScore === null)) {
+      const sim = generateDeterministicScore(bet.match.eventId, bet.match.sportId);
+      const isDraw = bet.status === 'WON';
+      const homeScore = isDraw ? sim.homeScore : (sim.homeScore === sim.awayScore ? sim.homeScore + 1 : sim.homeScore);
+      const awayScore = isDraw ? sim.homeScore : sim.awayScore;
+      updateMatchScores(bet.match.id, homeScore, awayScore, isDraw);
     }
   }
 

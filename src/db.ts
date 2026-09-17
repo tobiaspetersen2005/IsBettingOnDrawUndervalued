@@ -78,10 +78,16 @@ export function initDatabase() {
     db.exec(`ALTER TABLE matches ADD COLUMN sport_id TEXT NOT NULL DEFAULT 'SOCCER'`);
   } catch (e) {}
   try {
-    db.exec(`ALTER TABLE bets ADD COLUMN placedAt TEXT NOT NULL DEFAULT ''`);
+    db.exec(`ALTER TABLE bets ADD COLUMN placedAt TEXT DEFAULT ''`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE bets ADD COLUMN placed_at TEXT DEFAULT ''`);
   } catch (e) {}
   try {
     db.exec(`ALTER TABLE bets ADD COLUMN settledAt TEXT`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE bets ADD COLUMN settled_at TEXT`);
   } catch (e) {}
 
   // Clean up any old tier-locked non-draw leagues safely by deleting dependent bets and matches first
@@ -238,19 +244,49 @@ export function getMatches(): Match[] {
 
 export function insertBet(b: Omit<Bet, 'id'>): Bet {
   const id = `bet_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  db.prepare(`
-    INSERT INTO bets (id, match_id, stake, odds_decimal, status, payout, profit_loss, placedAt, settledAt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, b.matchId, b.stake, b.oddsDecimal, b.status, b.payout, b.profitLoss, b.placedAt, b.settledAt ?? null);
+  const now = b.placedAt || new Date().toISOString();
+  const cols = (db.pragma('table_info(bets)') as any[]).map(c => c.name);
+
+  if (cols.includes('placed_at') && cols.includes('placedAt')) {
+    db.prepare(`
+      INSERT INTO bets (id, match_id, stake, odds_decimal, status, payout, profit_loss, placedAt, placed_at, settledAt, settled_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, b.matchId, b.stake, b.oddsDecimal, b.status, b.payout, b.profitLoss, now, now, b.settledAt ?? null, b.settledAt ?? null);
+  } else if (cols.includes('placed_at')) {
+    db.prepare(`
+      INSERT INTO bets (id, match_id, stake, odds_decimal, status, payout, profit_loss, placed_at, settled_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, b.matchId, b.stake, b.oddsDecimal, b.status, b.payout, b.profitLoss, now, b.settledAt ?? null);
+  } else {
+    db.prepare(`
+      INSERT INTO bets (id, match_id, stake, odds_decimal, status, payout, profit_loss, placedAt, settledAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, b.matchId, b.stake, b.oddsDecimal, b.status, b.payout, b.profitLoss, now, b.settledAt ?? null);
+  }
 
   return { ...b, id };
 }
 
 export function updateBetSettlement(id: string, status: 'WON' | 'LOST', payout: number, profitLoss: number) {
   const settledAt = new Date().toISOString();
+  const cols = (db.pragma('table_info(bets)') as any[]).map(c => c.name);
+
+  if (cols.includes('settled_at') && cols.includes('settledAt')) {
+    db.prepare(`UPDATE bets SET status = ?, payout = ?, profit_loss = ?, settledAt = ?, settled_at = ? WHERE id = ?`).run(status, payout, profitLoss, settledAt, settledAt, id);
+  } else if (cols.includes('settled_at')) {
+    db.prepare(`UPDATE bets SET status = ?, payout = ?, profit_loss = ?, settled_at = ? WHERE id = ?`).run(status, payout, profitLoss, settledAt, id);
+  } else {
+    db.prepare(`UPDATE bets SET status = ?, payout = ?, profit_loss = ?, settledAt = ? WHERE id = ?`).run(status, payout, profitLoss, settledAt, id);
+  }
+}
+
+export function updateMatchScores(id: string, homeScore: number, awayScore: number, isDraw: boolean) {
+  const now = new Date().toISOString();
   db.prepare(`
-    UPDATE bets SET status = ?, payout = ?, profit_loss = ?, settledAt = ? WHERE id = ?
-  `).run(status, payout, profitLoss, settledAt, id);
+    UPDATE matches
+    SET status = 'FINISHED', home_score = ?, away_score = ?, is_draw = ?, updated_at = ?
+    WHERE id = ? OR event_id = ?
+  `).run(homeScore, awayScore, isDraw ? 1 : 0, now, id, id);
 }
 
 export function getBets(): Bet[] {

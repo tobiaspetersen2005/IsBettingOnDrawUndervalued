@@ -90,11 +90,11 @@ export function initDatabase() {
     db.exec(`ALTER TABLE bets ADD COLUMN settled_at TEXT`);
   } catch (e) {}
 
-  // Clean up any old tier-locked non-draw leagues safely by deleting dependent bets and matches first
+  // Clean up any old tier-locked non-draw leagues and synthetic matches safely
   try {
     db.exec(`
-      DELETE FROM bets WHERE match_id IN (SELECT id FROM matches WHERE league_id NOT IN ('UEFA_CHAMPIONS_LEAGUE', 'MLS', 'NHL'));
-      DELETE FROM matches WHERE league_id NOT IN ('UEFA_CHAMPIONS_LEAGUE', 'MLS', 'NHL');
+      DELETE FROM bets WHERE match_id IN (SELECT id FROM matches WHERE league_id NOT IN ('UEFA_CHAMPIONS_LEAGUE', 'MLS', 'NHL') OR event_id NOT LIKE 'espn_%');
+      DELETE FROM matches WHERE league_id NOT IN ('UEFA_CHAMPIONS_LEAGUE', 'MLS', 'NHL') OR event_id NOT LIKE 'espn_%';
       DELETE FROM leagues WHERE id NOT IN ('UEFA_CHAMPIONS_LEAGUE', 'MLS', 'NHL');
     `);
   } catch (e) {

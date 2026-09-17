@@ -2,6 +2,12 @@ import React, { useState } from 'react';
 import { Bet } from '../../types.js';
 import { Search, CheckCircle, XCircle, Clock, ArrowUpDown, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
 
+function formatAmericanOdds(decimal: number): string {
+  if (!decimal || decimal <= 1) return '+250';
+  const val = Math.round((decimal - 1) * 100);
+  return val >= 0 ? `+${val}` : `${val}`;
+}
+
 export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
   const [filter, setFilter] = useState<'ALL' | 'PREVIOUS' | 'UPCOMING'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -192,7 +198,7 @@ export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
                       {match?.bookmakerId || 'fanduel'}
                     </td>
                     <td className="py-3 px-4 font-bold text-amber-400">
-                      {bet.oddsDecimal.toFixed(2)} ({match?.drawOddsAmerican || `+${Math.round((bet.oddsDecimal - 1) * 100)}`})
+                      {bet.oddsDecimal.toFixed(2)} ({formatAmericanOdds(bet.oddsDecimal)})
                     </td>
                     <td className="py-3 px-4 text-slate-300">
                       ${bet.stake}

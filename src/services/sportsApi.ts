@@ -17,7 +17,7 @@ export function americanToDecimal(american: string | number | null | undefined):
 
 export async function fetchLiveLeagueMatches(leagueId: string, apiKey: string, preferredBookmaker: string = 'fanduel'): Promise<Omit<Match, 'id'>[]> {
   try {
-    const url = `https://api.sportsgameodds.com/v2/events?leagueID=${encodeURIComponent(leagueId)}&oddsAvailable=true&limit=30`;
+    const url = `https://api.sportsgameodds.com/v2/events?leagueID=${encodeURIComponent(leagueId)}&limit=40`;
     const response = await axios.get(url, {
       headers: {
         'x-api-key': apiKey,
@@ -39,13 +39,24 @@ export async function fetchLiveLeagueMatches(leagueId: string, apiKey: string, p
         const homeTeam = event.teams?.home?.names?.medium || event.teams?.home?.names?.long || event.teams?.home?.teamID || 'Home Team';
         const awayTeam = event.teams?.away?.names?.medium || event.teams?.away?.names?.long || event.teams?.away?.teamID || 'Away Team';
         const startsAt = event.status?.startsAt || new Date().toISOString();
-        const ended = Boolean(event.status?.ended || event.status?.finalized);
+        
+        // Status & Completion check
+        const ended = Boolean(
+          event.status?.ended ||
+          event.status?.finalized ||
+          event.status?.completed ||
+          event.status?.displayShort === 'FT' ||
+          event.status?.displayLong === 'Final'
+        );
         const status: MatchStatus = ended ? 'FINISHED' : 'SCHEDULED';
 
-        // Extract score if available
+        // Extract score if available (check teams.home.score / teams.away.score first, then scores)
         let homeScore: number | null = null;
         let awayScore: number | null = null;
-        if (event.scores && typeof event.scores.home === 'number' && typeof event.scores.away === 'number') {
+        if (typeof event.teams?.home?.score === 'number' && typeof event.teams?.away?.score === 'number') {
+          homeScore = event.teams.home.score;
+          awayScore = event.teams.away.score;
+        } else if (event.scores && typeof event.scores.home === 'number' && typeof event.scores.away === 'number') {
           homeScore = event.scores.home;
           awayScore = event.scores.away;
         }
@@ -66,7 +77,6 @@ export async function fetchLiveLeagueMatches(leagueId: string, apiKey: string, p
             const availableBookmakers = Object.keys(byBookmaker).filter(b => b.toLowerCase() !== 'betmgm');
 
             if (availableBookmakers.length > 0) {
-              // Priority list: preferredBookmaker -> fanduel -> unibet -> draftkings -> pinnacle -> others (EXCLUDING betmgm)
               const priority = [preferredBookmaker.toLowerCase(), 'fanduel', 'unibet', 'draftkings', 'pinnacle', 'caesars', 'bovada', 'williamhill'];
               let chosenBm = priority.find(b => availableBookmakers.includes(b));
               if (!chosenBm) {

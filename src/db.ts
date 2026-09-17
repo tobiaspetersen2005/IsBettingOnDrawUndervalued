@@ -70,12 +70,18 @@ export function initDatabase() {
     );
   `);
 
-  // Migration: Ensure sport_id column exists
+  // Migration: Ensure sport_id and bets columns exist
   try {
     db.exec(`ALTER TABLE leagues ADD COLUMN sport_id TEXT NOT NULL DEFAULT 'SOCCER'`);
   } catch (e) {}
   try {
     db.exec(`ALTER TABLE matches ADD COLUMN sport_id TEXT NOT NULL DEFAULT 'SOCCER'`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE bets ADD COLUMN placedAt TEXT NOT NULL DEFAULT ''`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE bets ADD COLUMN settledAt TEXT`);
   } catch (e) {}
 
   // Clean up any old tier-locked non-draw leagues safely by deleting dependent bets and matches first
@@ -290,34 +296,69 @@ export function getPendingBets(): Bet[] {
   return getBets().filter(b => b.status === 'PENDING');
 }
 
-export function recordBankrollSnapshot() {
+export function rebuildBankrollHistory() {
   const settings = getSettings();
   const bets = getBets();
-  const wonBets = bets.filter(b => b.status === 'WON');
-  const lostBets = bets.filter(b => b.status === 'LOST');
-  const pendingBets = bets.filter(b => b.status === 'PENDING');
-  const settledBets = wonBets.length + lostBets.length;
+  const settledBets = bets.filter(b => b.status === 'WON' || b.status === 'LOST');
 
-  const netProfit = bets.reduce((sum, b) => sum + (b.status !== 'PENDING' ? b.profitLoss : 0), 0);
-  const currentBalance = settings.startingBalance + netProfit;
-  const winRate = settledBets > 0 ? (wonBets.length / settledBets) * 100 : 0;
-  const totalStaked = settledBets * settings.stakePerBet;
-  const roiPercentage = totalStaked > 0 ? (netProfit / totalStaked) * 100 : 0;
+  // Sort settled bets chronologically by match start date
+  settledBets.sort((a, b) => {
+    const timeA = a.match?.startsAt ? new Date(a.match.startsAt).getTime() : new Date(a.placedAt).getTime();
+    const timeB = b.match?.startsAt ? new Date(b.match.startsAt).getTime() : new Date(b.placedAt).getTime();
+    return timeA - timeB;
+  });
+
+  // Clear existing history to rebuild cleanly
+  db.exec(`DELETE FROM bankroll_history`);
+
+  let currentBalance = settings.startingBalance;
+  let cumulativeProfit = 0;
+  let wonCount = 0;
+  let lostCount = 0;
+
+  // Initial snapshot at start of experiment
+  const initialTime = settledBets.length > 0 && settledBets[0].match?.startsAt
+    ? new Date(new Date(settledBets[0].match.startsAt).getTime() - 24 * 60 * 60 * 1000).toISOString()
+    : new Date().toISOString();
 
   db.prepare(`
     INSERT INTO bankroll_history (timestamp, balance, net_profit, total_bets, won_bets, lost_bets, pending_bets, win_rate, roi_percentage)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    new Date().toISOString(),
-    currentBalance,
-    netProfit,
-    settledBets,
-    wonBets.length,
-    lostBets.length,
-    pendingBets.length,
-    winRate,
-    roiPercentage
-  );
+    VALUES (?, ?, 0, 0, 0, 0, ?, 0, 0)
+  `).run(initialTime, currentBalance, bets.filter(b => b.status === 'PENDING').length);
+
+  for (let i = 0; i < settledBets.length; i++) {
+    const bet = settledBets[i];
+    if (bet.status === 'WON') wonCount++;
+    if (bet.status === 'LOST') lostCount++;
+
+    cumulativeProfit += bet.profitLoss;
+    currentBalance = settings.startingBalance + cumulativeProfit;
+
+    const totalSettled = wonCount + lostCount;
+    const winRate = totalSettled > 0 ? (wonCount / totalSettled) * 100 : 0;
+    const totalStaked = totalSettled * settings.stakePerBet;
+    const roiPercentage = totalStaked > 0 ? (cumulativeProfit / totalStaked) * 100 : 0;
+    const timestamp = bet.match?.startsAt || bet.settledAt || bet.placedAt;
+
+    db.prepare(`
+      INSERT INTO bankroll_history (timestamp, balance, net_profit, total_bets, won_bets, lost_bets, pending_bets, win_rate, roi_percentage)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      timestamp,
+      currentBalance,
+      cumulativeProfit,
+      totalSettled,
+      wonCount,
+      lostCount,
+      bets.length - totalSettled,
+      winRate,
+      roiPercentage
+    );
+  }
+}
+
+export function recordBankrollSnapshot() {
+  rebuildBankrollHistory();
 }
 
 export function getBankrollHistory(): BankrollSnapshot[] {

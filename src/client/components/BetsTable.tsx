@@ -3,7 +3,7 @@ import { Bet } from '../../types.js';
 import { Search, CheckCircle, XCircle, Clock, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
-  const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'WON' | 'LOST'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'PENDING' | 'SETTLED' | 'WON' | 'LOST'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<'startsAt' | 'league' | 'odds' | 'profit'>('startsAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -18,7 +18,11 @@ export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
   };
 
   const filteredBets = bets.filter(b => {
-    if (filter !== 'ALL' && b.status !== filter) return false;
+    if (filter === 'PENDING' && b.status !== 'PENDING') return false;
+    if (filter === 'SETTLED' && b.status === 'PENDING') return false;
+    if (filter === 'WON' && b.status !== 'WON') return false;
+    if (filter === 'LOST' && b.status !== 'LOST') return false;
+
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const match = b.match;
@@ -70,7 +74,7 @@ export const BetsTable: React.FC<{ bets: Bet[] }> = ({ bets }) => {
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           {/* Status Tabs */}
           <div className="flex bg-slate-900/60 p-1 rounded-lg border border-slate-700 text-xs">
-            {(['ALL', 'PENDING', 'WON', 'LOST'] as const).map(tab => (
+            {(['ALL', 'PENDING', 'SETTLED', 'WON', 'LOST'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setFilter(tab)}
